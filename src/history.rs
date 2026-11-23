@@ -101,8 +101,6 @@ pub struct Report {
     pub heatmap: Vec<DayStat>,
     /// Focus minutes by hour of day (all time).
     pub hours: [i64; 24],
-    /// Focus minutes by label, largest first.
-    pub labels: Vec<(String, i64, u32)>,
     /// Most recent sessions, newest first.
     pub recent: Vec<Session>,
 }
@@ -117,7 +115,6 @@ impl Report {
     pub fn build_for(sessions: &[Session], goal: u32, today: NaiveDate) -> Self {
         let mut r = Report { goal, ..Default::default() };
         let mut by_day: HashMap<NaiveDate, DayStat> = HashMap::new();
-        let mut by_label: HashMap<String, (i64, u32)> = HashMap::new();
 
         for s in sessions {
             let day = s.day();
@@ -134,10 +131,6 @@ impl Report {
             d.minutes += mins;
             d.sessions += 1;
             r.hours[s.local_start().hour() as usize] += mins;
-            let label = if s.label.is_empty() { "Unlabeled".to_string() } else { s.label.clone() };
-            let e = by_label.entry(label).or_default();
-            e.0 += mins;
-            e.1 += 1;
         }
 
         let get = |d: NaiveDate| by_day.get(&d).cloned().unwrap_or(DayStat { date: d, ..Default::default() });
@@ -174,11 +167,6 @@ impl Report {
             r.best_streak = r.best_streak.max(run);
             prev = Some(d);
         }
-
-        let mut labels: Vec<_> = by_label.into_iter().map(|(k, (m, n))| (k, m, n)).collect();
-        labels.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
-        labels.truncate(6);
-        r.labels = labels;
 
         r.recent = sessions.iter().rev().take(8).cloned().collect();
         r
@@ -233,7 +221,6 @@ mod tests {
         assert_eq!(r.week_minutes, 100);
         assert_eq!(r.prev_week_minutes, 75);
         assert_eq!(r.peak_hour(), Some(14));
-        assert_eq!(r.labels[0].0, "a");
         assert_eq!(r.heatmap.last().unwrap().date, today);
     }
 

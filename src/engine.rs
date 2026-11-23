@@ -64,9 +64,6 @@ pub struct TimerState {
     /// Length of the phase as it was started (settings may change mid-phase).
     pub duration_ms: i64,
     pub started_at: Option<i64>,
-    pub label: String,
-    /// Task (from the Tasks page) this focus is attributed to.
-    pub task_id: Option<u64>,
 }
 
 impl Default for TimerState {
@@ -78,8 +75,6 @@ impl Default for TimerState {
             seq: 0,
             duration_ms: 0,
             started_at: None,
-            label: String::new(),
-            task_id: None,
         }
     }
 }
@@ -132,14 +127,6 @@ impl TimerState {
         matches!(self.status, Status::Running { .. })
     }
 
-    pub fn display_label(&self) -> &str {
-        if self.label.trim().is_empty() {
-            self.phase.title()
-        } else {
-            self.label.trim()
-        }
-    }
-
     fn start(&mut self, s: &Settings, now: i64) {
         self.duration_ms = i64::from(self.phase.minutes(s)) * 60_000;
         self.status = Status::Running { ends_at: now + self.duration_ms };
@@ -173,8 +160,6 @@ pub enum Command {
     Reset,
     Skip,
     ResetCycle,
-    /// Focus on a task (or clear with `None`); the task title becomes the label.
-    SetTask(Option<(u64, String)>),
 }
 
 /// Applies a user command to the shared state and returns the new state.
@@ -205,13 +190,7 @@ pub fn apply(cmd: Command) -> TimerState {
             }
         }
         Command::ResetCycle => {
-            let label = std::mem::take(&mut state.label);
-            let seq = state.seq + 1;
-            state = TimerState { label, seq, task_id: state.task_id, ..TimerState::default() };
-        }
-        Command::SetTask(task) => {
-            state.task_id = task.as_ref().map(|t| t.0);
-            state.label = task.map(|t| t.1).unwrap_or_default();
+            state = TimerState { seq: state.seq + 1, ..TimerState::default() };
         }
     }
     state.save();
@@ -273,13 +252,8 @@ pub fn tick() -> (TimerState, Option<Completion>) {
         end: ends_at,
         phase: finished,
         seconds: duration / 1000,
-        label: state.label.trim().to_string(),
+        label: String::new(),
     });
-    if finished == Phase::Focus {
-        if let Some(id) = state.task_id {
-            crate::todo::add_pomodoro(id);
-        }
-    }
 
     state.advance(&settings);
     let auto = if state.phase.is_break() {

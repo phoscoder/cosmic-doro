@@ -65,7 +65,7 @@ impl Applet {
             .align_y(Alignment::Center)
             .spacing(8)
             .push(
-                widget::text::heading(t.display_label().to_string())
+                widget::text::heading(t.phase.title())
                     .width(Length::Fill)
                     .class(theme::Text::Color(ui::phase_color(&theme::active(), phase))),
             )
@@ -292,7 +292,7 @@ impl cosmic::Application for Applet {
             _ => format!(
                 "{} — {} {}",
                 doro::APP_NAME,
-                t.display_label(),
+                t.phase.title(),
                 format_clock(t.remaining_ms(&self.settings, self.now))
             ),
         };

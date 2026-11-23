@@ -4,12 +4,11 @@ use chrono::{Datelike, Local};
 use cosmic::app::{Core, Settings as AppSettings, Task};
 use cosmic::iced::alignment::Horizontal;
 use cosmic::iced::{Alignment, Length, Size, Subscription};
-use cosmic::widget::{self, canvas, icon, nav_bar, segmented_button, settings};
+use cosmic::widget::{self, canvas, icon, nav_bar, settings};
 use cosmic::{Application, ApplicationExt, Element, executor, theme};
 use doro::config::Settings;
 use doro::engine::{self, Command, Phase, Status, TimerState};
 use doro::history::{self, Report};
-use doro::todo::{self, Todo};
 use doro::ui::{self, Bars, Heatmap, Ring};
 use doro::{format_clock, format_minutes};
 use std::time::{Duration, SystemTime};
@@ -24,7 +23,7 @@ fn main() -> cosmic::iced::Result {
     cosmic::app::run_single_instance::<App>(settings, Flags { page })
 }
 
-/// Launch flags: an optional page name (`timer`, `tasks`, `reports`, `settings`).
+/// Launch flags: an optional page name (`timer`, `reports`, `settings`).
 #[derive(Clone, Debug, Default)]
 struct Flags {
     page: Option<String>,
@@ -42,9 +41,8 @@ impl cosmic::app::CosmicFlags for Flags {
 fn page_index(name: &str) -> Option<u16> {
     match name {
         "timer" => Some(0),
-        "tasks" => Some(1),
-        "reports" => Some(2),
-        "settings" => Some(3),
+        "reports" => Some(1),
+        "settings" => Some(2),
         _ => None,
     }
 }
@@ -52,7 +50,6 @@ fn page_index(name: &str) -> Option<u16> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Page {
     Timer,
-    Tasks,
     Reports,
     Settings,
 }
@@ -78,17 +75,6 @@ enum Message {
     Tick,
     Timer(Command),
     Set(Field),
-    GoTo(u16),
-    TaskInput(String),
-    TaskEstimate(u32),
-    AddTask,
-    ToggleTask(u64, bool),
-    DeleteTask(u64),
-    FocusTask(u64),
-    ClearFocus,
-    BumpEstimate(u64, i32),
-    Filter(segmented_button::Entity),
-    ClearCompleted,
     ClearHistory,
     ConfirmClear(bool),
 }
@@ -102,11 +88,6 @@ struct App {
     report: Report,
     history_mtime: Option<SystemTime>,
     settings_mtime: Option<SystemTime>,
-    todos: Vec<Todo>,
-    todos_mtime: Option<SystemTime>,
-    task_input: String,
-    task_estimate: u32,
-    filter: segmented_button::SingleSelectModel,
     confirm_clear: bool,
     width: f32,
 }
@@ -117,20 +98,6 @@ impl App {
         self.report = Report::build(&history::load_all(), self.settings.daily_goal);
     }
 
-    fn reload_todos(&mut self) {
-        self.todos_mtime = todo::file_mtime();
-        self.todos = todo::load();
-    }
-
-    fn save_todos(&mut self) {
-        todo::save(&self.todos);
-        self.todos_mtime = todo::file_mtime();
-    }
-
-    fn focused_task(&self) -> Option<&Todo> {
-        self.timer.task_id.and_then(|id| self.todos.iter().find(|t| t.id == id))
-    }
-
     fn page(&self) -> Page {
         self.nav.active_data::<Page>().copied().unwrap_or(Page::Timer)
     }
@@ -138,7 +105,7 @@ impl App {
     fn sync_title(&mut self) -> Task<Message> {
         let rem = format_clock(self.timer.remaining_ms(&self.settings, self.now));
         let title = match self.timer.status {
-            Status::Running { .. } => format!("{rem} · {} — {}", self.timer.display_label(), doro::APP_NAME),
+            Status::Running { .. } => format!("{rem} · {} — {}", self.timer.phase.title(), doro::APP_NAME),
             Status::Paused { .. } => format!("{rem} (paused) — {}", doro::APP_NAME),
             Status::Idle => doro::APP_NAME.to_string(),
         };
@@ -166,7 +133,6 @@ impl Application for App {
     fn init(core: Core, flags: Flags) -> (Self, Task<Message>) {
         let mut nav = nav_bar::Model::default();
         nav.insert().text("Timer").icon(icon::from_name("accessories-clock-symbolic")).data(Page::Timer);
-        nav.insert().text("Tasks").icon(icon::from_name("checkbox-checked-symbolic")).data(Page::Tasks);
         nav.insert()
             .text("Reports")
             .icon(icon::from_name("utilities-system-monitor-symbolic"))
@@ -177,23 +143,12 @@ impl Application for App {
             .data(Page::Settings);
         nav.activate_position(flags.page.as_deref().and_then(page_index).unwrap_or(0));
 
-        let mut filter = segmented_button::SingleSelectModel::default();
-        filter.insert().text("Active").data(Filter::Active);
-        filter.insert().text("Completed").data(Filter::Done);
-        filter.insert().text("All").data(Filter::All);
-        filter.activate_position(0);
-
         let (timer, _) = engine::tick();
         let settings = Settings::load();
         let mut app = App {
             core,
             nav,
             timer,
-            todos: Vec::new(),
-            todos_mtime: None,
-            task_input: String::new(),
-            task_estimate: 1,
-            filter,
             settings,
             now: engine::now_ms(),
             report: Report::default(),
@@ -203,7 +158,6 @@ impl Application for App {
             width: 1040.0,
         };
         app.refresh_report();
-        app.reload_todos();
         if app.settings.tray_icon {
             Settings::spawn_tray();
         }
@@ -254,9 +208,6 @@ impl Application for App {
             Message::Tick => {
                 let (timer, done) = engine::tick();
                 self.timer = timer;
-                if todo::file_mtime() != self.todos_mtime {
-                    self.reload_todos();
-                }
                 self.now = engine::now_ms();
                 let m = doro::paths::mtime(&Settings::path());
                 if m != self.settings_mtime {
@@ -270,71 +221,6 @@ impl Application for App {
             Message::Timer(cmd) => {
                 self.timer = engine::apply(cmd);
                 self.now = engine::now_ms();
-            }
-            Message::GoTo(n) => {
-                self.nav.activate_position(n);
-                if self.page() == Page::Reports {
-                    self.refresh_report();
-                }
-            }
-            Message::TaskInput(v) => self.task_input = v,
-            Message::TaskEstimate(v) => self.task_estimate = v,
-            Message::AddTask => {
-                let title = self.task_input.trim().to_string();
-                if !title.is_empty() {
-                    self.reload_todos();
-                    let id = todo::next_id(&self.todos);
-                    self.todos.push(Todo {
-                        id,
-                        title,
-                        done: false,
-                        estimate: self.task_estimate,
-                        pomodoros: 0,
-                        created: engine::now_ms(),
-                        completed_at: None,
-                    });
-                    self.save_todos();
-                    self.task_input.clear();
-                    self.task_estimate = 1;
-                }
-            }
-            Message::ToggleTask(id, done) => {
-                if let Some(t) = self.todos.iter_mut().find(|t| t.id == id) {
-                    t.done = done;
-                    t.completed_at = done.then(engine::now_ms);
-                }
-                self.save_todos();
-                if done && self.timer.task_id == Some(id) {
-                    self.timer = engine::apply(Command::SetTask(None));
-                }
-            }
-            Message::DeleteTask(id) => {
-                self.todos.retain(|t| t.id != id);
-                self.save_todos();
-                if self.timer.task_id == Some(id) {
-                    self.timer = engine::apply(Command::SetTask(None));
-                }
-            }
-            Message::BumpEstimate(id, d) => {
-                if let Some(t) = self.todos.iter_mut().find(|t| t.id == id) {
-                    t.estimate = (t.estimate as i32 + d).clamp(1, 12) as u32;
-                }
-                self.save_todos();
-            }
-            Message::FocusTask(id) => {
-                if let Some(t) = self.todos.iter().find(|t| t.id == id) {
-                    self.timer = engine::apply(Command::SetTask(Some((t.id, t.title.clone()))));
-                    if self.timer.status == Status::Idle && self.timer.phase == Phase::Focus {
-                        self.timer = engine::apply(Command::Toggle);
-                    }
-                    self.nav.activate_position(0);
-                }
-            }
-            Message::ClearFocus => self.timer = engine::apply(Command::SetTask(None)),
-            Message::Filter(e) => self.filter.activate(e),
-            Message::ClearCompleted => {
-                self.todos.retain(|t| !t.done);
-                self.save_todos();
             }
             Message::Set(field) => {
                 let s = &mut self.settings;
@@ -386,7 +272,6 @@ impl Application for App {
     fn view(&self) -> Element<'_, Message> {
         let content = match self.page() {
             Page::Timer => self.timer_page(),
-            Page::Tasks => self.tasks_page(),
             Page::Reports => self.reports_page(),
             Page::Settings => self.settings_page(),
         };
@@ -495,7 +380,7 @@ impl App {
         let content_w = if self.core.nav_bar_active() { self.width - 260.0 } else { self.width };
         let ring_size = (content_w - 56.0).clamp(240.0, 380.0);
         let caption = match t.phase {
-            Phase::Focus => format!("{} · round {}/{}", t.display_label(), t.round, s.rounds.max(1)),
+            Phase::Focus => format!("Focus · round {}/{}", t.round, s.rounds.max(1)),
             p => format!("{} · {} min", p.title(), p.minutes(s)),
         };
         let ring = canvas(Ring {
@@ -552,36 +437,6 @@ impl App {
             .push(phase_chip(Phase::ShortBreak, t.phase))
             .push(phase_chip(Phase::LongBreak, t.phase));
 
-        let focus_card: Element<'_, Message> = match self.focused_task() {
-            Some(task) => widget::container(
-                widget::Row::new()
-                    .spacing(12)
-                    .align_y(Alignment::Center)
-                    .push(dot(10.0, true))
-                    .push(
-                        widget::Column::new()
-                            .spacing(2)
-                            .width(Length::Fill)
-                            .push(widget::text::caption("FOCUSING ON"))
-                            .push(widget::text::heading(task.title.clone())),
-                    )
-                    .push(tomatoes(task.pomodoros, task.estimate))
-                    .push(widget::tooltip(
-                        widget::button::icon(icon::from_name("window-close-symbolic")).on_press(Message::ClearFocus),
-                        widget::text("Stop focusing on this task"),
-                        widget::tooltip::Position::Bottom,
-                    )),
-            )
-            .padding([10, 12, 10, 16])
-            .width(Length::Fixed(ring_size.max(380.0)))
-            .class(highlight_card(true))
-            .into(),
-            None => widget::button::standard("Pick a task to focus on")
-                .leading_icon(icon::from_name("checkbox-checked-symbolic"))
-                .on_press(Message::GoTo(1))
-                .into(),
-        };
-
         let r = &self.report;
         let goal = s.daily_goal.max(1);
         let today = card(
@@ -610,7 +465,6 @@ impl App {
             .push(phases)
             .push(ring)
             .push(controls)
-            .push(focus_card)
             .push(widget::tooltip(
                 widget::button::standard("Reset")
                     .leading_icon(icon::from_name("view-refresh-symbolic"))
@@ -619,238 +473,6 @@ impl App {
                 widget::tooltip::Position::Bottom,
             ))
             .push(today)
-            .into()
-    }
-
-    fn tasks_page(&self) -> Element<'_, Message> {
-        let filter = self.filter.active_data::<Filter>().copied().unwrap_or(Filter::Active);
-        let active: Vec<&Todo> = self.todos.iter().filter(|t| !t.done).collect();
-        let done: Vec<&Todo> = self.todos.iter().filter(|t| t.done).collect();
-        let today = Local::now().date_naive();
-        let done_today = done
-            .iter()
-            .filter(|t| {
-                t.completed_at
-                    .and_then(chrono::DateTime::from_timestamp_millis)
-                    .is_some_and(|d| d.with_timezone(&Local).date_naive() == today)
-            })
-            .count();
-        let left: u32 = active.iter().map(|t| t.estimate.saturating_sub(t.pomodoros)).sum();
-        let total = self.todos.len().max(1);
-        let content_w = if self.core.nav_bar_active() { self.width - 260.0 } else { self.width };
-
-        let header = widget::Column::new()
-            .spacing(4)
-            .push(widget::text::title1("Tasks"))
-            .push(widget::text::body("Plan your day, then focus on one thing at a time."));
-
-        let stats = vec![
-            stat(
-                "Done today",
-                done_today.to_string(),
-                format!("{} completed in total", done.len()),
-                "emblem-ok-symbolic",
-            ),
-            stat(
-                "Remaining",
-                format!("{} {}", active.len(), if active.len() == 1 { "task" } else { "tasks" }),
-                format!("≈ {left} pomodoros · {}", format_minutes(i64::from(left * self.settings.focus_minutes))),
-                "task-due-symbolic",
-            ),
-            card(
-                widget::Column::new()
-                    .spacing(10)
-                    .push(widget::text::caption("Progress"))
-                    .push(widget::text::title2(format!("{}%", done.len() * 100 / total)))
-                    .push(meter(done.len() as f32 / total as f32, 8)),
-            )
-            .into(),
-        ];
-
-        let narrow = content_w < 640.0;
-        let input = widget::text_input("Add a task and press Enter…", &self.task_input)
-            .on_input(Message::TaskInput)
-            .on_submit(|_| Message::AddTask)
-            .leading_icon(icon::from_name("list-add-symbolic").icon().into())
-            .width(Length::Fill);
-        let estimate = widget::tooltip(
-            widget::spin_button(
-                format!("🍅 {}", self.task_estimate),
-                "Estimated pomodoros",
-                self.task_estimate,
-                1,
-                1,
-                12,
-                Message::TaskEstimate,
-            ),
-            widget::text("Estimated pomodoros"),
-            widget::tooltip::Position::Bottom,
-        );
-        let add = widget::button::suggested("Add")
-            .leading_icon(icon::from_name("list-add-symbolic"))
-            .on_press_maybe((!self.task_input.trim().is_empty()).then_some(Message::AddTask));
-        let composer = card(if narrow {
-            Element::from(
-                widget::Column::new().spacing(10).push(input).push(
-                    widget::Row::new()
-                        .spacing(10)
-                        .align_y(Alignment::Center)
-                        .push(estimate)
-                        .push(widget::Space::new().width(Length::Fill))
-                        .push(add),
-                ),
-            )
-        } else {
-            widget::Row::new().spacing(12).align_y(Alignment::Center).push(input).push(estimate).push(add).into()
-        });
-        let tabs = widget::container(
-            widget::segmented_control::horizontal(&self.filter).on_activate(Message::Filter),
-        )
-        .width(if narrow { Length::Fill } else { Length::Fixed(340.0) });
-        let mut toolbar_info = widget::Row::new()
-            .spacing(12)
-            .align_y(Alignment::Center)
-            .push(widget::text::caption(format!("{} active · {} done", active.len(), done.len())));
-        if !done.is_empty() {
-            toolbar_info = toolbar_info.push(
-                widget::button::text("Clear completed")
-                    .leading_icon(icon::from_name("edit-delete-symbolic"))
-                    .on_press(Message::ClearCompleted),
-            );
-        }
-        let toolbar: Element<'_, Message> = if narrow {
-            widget::Column::new().spacing(8).push(tabs).push(toolbar_info).into()
-        } else {
-            widget::Row::new()
-                .spacing(12)
-                .align_y(Alignment::Center)
-                .push(tabs)
-                .push(widget::Space::new().width(Length::Fill))
-                .push(toolbar_info)
-                .into()
-        };
-
-        let shown: Vec<&Todo> = match filter {
-            Filter::Active => active.clone(),
-            Filter::Done => done.iter().rev().copied().collect(),
-            Filter::All => active.iter().chain(done.iter()).copied().collect(),
-        };
-
-        let list: Element<'_, Message> = if shown.is_empty() {
-            let (title, body) = match filter {
-                Filter::Done => ("Nothing completed yet", "Finished tasks will land here. You've got this."),
-                _ if self.todos.is_empty() => {
-                    ("Your list is clear", "Add your first task above, estimate its pomodoros and press Focus.")
-                }
-                _ => ("All done! 🎉", "Every task is complete. Celebrate, or plan what's next."),
-            };
-            card(
-                widget::Column::new()
-                    .spacing(10)
-                    .padding(28)
-                    .width(Length::Fill)
-                    .align_x(Alignment::Center)
-                    .push(icon::from_svg_bytes(doro::LOGO_SVG).icon().size(88))
-                    .push(widget::text::title3(title))
-                    .push(widget::text::body(body)),
-            )
-            .into()
-        } else {
-            shown
-                .into_iter()
-                .fold(widget::Column::new().spacing(8), |col, t| col.push(self.task_row(t, narrow)))
-                .into()
-        };
-
-        widget::Column::new()
-            .spacing(18)
-            .push(header)
-            .push(grid(stats, if content_w >= 700.0 { 3 } else { 1 }))
-            .push(composer)
-            .push(toolbar)
-            .push(list)
-            .into()
-    }
-
-    fn task_row<'a>(&'a self, t: &'a Todo, narrow: bool) -> Element<'a, Message> {
-        let focused = self.timer.task_id == Some(t.id);
-        let id = t.id;
-        let done = t.done;
-
-        let title = widget::text::body(t.title.clone()).class(if done {
-            theme::Text::Color(ui::alpha(ui::color(theme::active().cosmic().on_bg_color()), 0.45))
-        } else {
-            theme::Text::Default
-        });
-
-        let mut meta = widget::Row::new()
-            .spacing(10)
-            .align_y(Alignment::Center)
-            .push(tomatoes(t.pomodoros, t.estimate))
-            .push(widget::text::caption(format!(
-                "{}/{} pomodoros · {}",
-                t.pomodoros,
-                t.estimate,
-                format_minutes(i64::from(t.pomodoros * self.settings.focus_minutes))
-            )));
-        if focused {
-            meta = meta.push(badge("FOCUSING"));
-        }
-
-        let mut actions = widget::Row::new().spacing(6).align_y(Alignment::Center);
-        if !done {
-            actions = actions
-                .push(widget::tooltip(
-                    widget::Row::new()
-                        .push(
-                            widget::button::icon(icon::from_name("list-remove-symbolic"))
-                                .on_press(Message::BumpEstimate(id, -1)),
-                        )
-                        .push(
-                            widget::button::icon(icon::from_name("list-add-symbolic"))
-                                .on_press(Message::BumpEstimate(id, 1)),
-                        ),
-                    widget::text("Adjust estimated pomodoros"),
-                    widget::tooltip::Position::Bottom,
-                ))
-                .push(if focused {
-                    widget::button::standard("Focusing")
-                        .leading_icon(icon::from_name("accessories-clock-symbolic"))
-                        .on_press(Message::GoTo(0))
-                } else {
-                    widget::button::suggested("Focus")
-                        .leading_icon(icon::from_name("media-playback-start-symbolic"))
-                        .on_press(Message::FocusTask(id))
-                });
-        }
-        actions = actions.push(widget::tooltip(
-            widget::button::icon(icon::from_name("edit-delete-symbolic")).on_press(Message::DeleteTask(id)),
-            widget::text("Delete task"),
-            widget::tooltip::Position::Bottom,
-        ));
-
-        let check = widget::checkbox(done).on_toggle(move |v| Message::ToggleTask(id, v));
-        let body = widget::Column::new().spacing(6).width(Length::Fill).push(title).push(meta);
-        let row: Element<'a, Message> = if narrow {
-            widget::Row::new()
-                .spacing(14)
-                .push(check)
-                .push(body.push(actions))
-                .into()
-        } else {
-            widget::Row::new()
-                .spacing(14)
-                .align_y(Alignment::Center)
-                .push(check)
-                .push(body)
-                .push(actions)
-                .into()
-        };
-
-        widget::container(row)
-            .padding([12, 14, 12, 16])
-            .width(Length::Fill)
-            .class(highlight_card(focused))
             .into()
     }
 
@@ -959,25 +581,6 @@ impl App {
             .height(Length::Fixed(150.0)),
         );
 
-        let mut labels = widget::Column::new().spacing(12);
-        let top = r.labels.first().map(|l| l.1).unwrap_or(1).max(1);
-        if r.labels.is_empty() {
-            labels = labels.push(widget::text::caption("Name your sessions on the Timer page to see them here."));
-        }
-        for (name, mins, n) in &r.labels {
-            labels = labels.push(
-                widget::Column::new()
-                    .spacing(6)
-                    .push(
-                        widget::Row::new()
-                            .push(widget::text::body(name.clone()).width(Length::Fill))
-                            .push(widget::text::caption(format!("{} · {n}×", format_minutes(*mins)))),
-                    )
-                    .push(meter(*mins as f32 / top as f32, 6)),
-            );
-        }
-        let labels_card = titled_card("Top focus areas", "Where your focus time went".into(), labels);
-
         let mut recent = widget::list_column();
         if r.recent.is_empty() {
             recent = recent.add(widget::text::caption("No sessions yet — start your first focus round!"));
@@ -1033,8 +636,7 @@ impl App {
             .push(grid(stats, stat_cols))
             .push(week_card)
             .push(grid(vec![heat_card, hours_card], pair_cols))
-            .push(grid(vec![labels_card, highlights], pair_cols))
-            .push(recent_card)
+            .push(grid(vec![highlights, recent_card], pair_cols))
             .into()
     }
 
@@ -1163,72 +765,6 @@ fn grid<'a>(items: Vec<Element<'a, Message>>, cols: usize) -> Element<'a, Messag
         column = column.push(row);
     }
     column.into()
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Filter {
-    Active,
-    Done,
-    All,
-}
-
-/// Card background that gains an accent outline and tint when highlighted.
-fn highlight_card<'a>(on: bool) -> theme::Container<'a> {
-    theme::Container::custom(move |t| {
-        let c = t.cosmic();
-        let accent = ui::color(c.accent_color());
-        let bg = ui::color(c.bg_component_color());
-        cosmic::iced::widget::container::Style {
-            background: Some(if on { ui::mix(bg, accent, 0.12) } else { bg }.into()),
-            border: cosmic::iced::Border {
-                radius: c.corner_radii.radius_m.into(),
-                width: if on { 1.5 } else { 1.0 },
-                color: if on { ui::alpha(accent, 0.8) } else { ui::alpha(ui::color(c.on_bg_color()), 0.06) },
-            },
-            ..Default::default()
-        }
-    })
-}
-
-fn dot<'a>(size: f32, filled: bool) -> Element<'a, Message> {
-    widget::container(widget::Space::new())
-        .width(size)
-        .height(size)
-        .class(theme::Container::custom(move |t| {
-            let accent = ui::color(t.cosmic().accent_color());
-            cosmic::iced::widget::container::Style {
-                background: filled.then(|| accent.into()),
-                border: cosmic::iced::Border {
-                    radius: (size / 2.0).into(),
-                    width: if filled { 0.0 } else { 1.5 },
-                    color: ui::alpha(accent, 0.55),
-                },
-                ..Default::default()
-            }
-        }))
-        .into()
-}
-
-/// One dot per estimated pomodoro, filled in as sessions are completed.
-fn tomatoes<'a>(done: u32, estimate: u32) -> Element<'a, Message> {
-    (0..estimate.max(done).min(16))
-        .fold(widget::Row::new().spacing(4).align_y(Alignment::Center), |r, i| r.push(dot(9.0, i < done)))
-        .into()
-}
-
-fn badge<'a>(label: &'a str) -> Element<'a, Message> {
-    widget::container(widget::text::caption(label))
-        .padding([1, 8])
-        .class(theme::Container::custom(|t| {
-            let accent = ui::color(t.cosmic().accent_color());
-            cosmic::iced::widget::container::Style {
-                background: Some(ui::alpha(accent, 0.18).into()),
-                text_color: Some(accent),
-                border: cosmic::iced::Border { radius: 999.0.into(), ..Default::default() },
-                ..Default::default()
-            }
-        }))
-        .into()
 }
 
 fn kv<'a>(k: &'a str, v: String) -> Element<'a, Message> {

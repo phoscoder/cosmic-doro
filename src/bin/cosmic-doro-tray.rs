@@ -4,9 +4,9 @@
 
 use doro::config::Settings;
 use doro::engine::{self, Command, Phase, Status, TimerState};
-use doro::{format_clock, todo};
+use doro::format_clock;
 use ksni::blocking::TrayMethods;
-use ksni::menu::{StandardItem, SubMenu};
+use ksni::menu::StandardItem;
 use ksni::{Icon, MenuItem, ToolTip};
 use std::time::Duration;
 
@@ -14,7 +14,6 @@ struct DoroTray {
     timer: TimerState,
     settings: Settings,
     now: i64,
-    tasks: Vec<todo::Todo>,
     quit: bool,
 }
 
@@ -90,7 +89,6 @@ impl DoroTray {
         self.timer = timer;
         self.settings = Settings::load();
         self.now = engine::now_ms();
-        self.tasks = todo::load().into_iter().filter(|t| !t.done).collect();
     }
 
     fn remaining(&self) -> String {
@@ -133,10 +131,7 @@ impl ksni::Tray for DoroTray {
         };
         ToolTip {
             title: format!("{} {} {state}", t.phase.title(), self.remaining()),
-            description: match t.task_id {
-                Some(_) if !t.label.is_empty() => format!("Focusing on: {}", t.label),
-                _ => format!("Round {} of {}", t.round, self.settings.rounds.max(1)),
-            },
+            description: format!("Round {} of {}", t.round, self.settings.rounds.max(1)),
             icon_name: doro::APP_ID.into(),
             icon_pixmap: Vec::new(),
         }
@@ -165,45 +160,13 @@ impl ksni::Tray for DoroTray {
             Status::Running { .. } => format!("{} · {} left", t.phase.title(), self.remaining()),
         };
 
-        let mut tasks: Vec<MenuItem<Self>> = self
-            .tasks
-            .iter()
-            .take(10)
-            .map(|task| {
-                let (id, title) = (task.id, task.title.clone());
-                let mark = if t.task_id == Some(id) { "● " } else { "" };
-                item(
-                    format!("{mark}{title}  ({}/{} 🍅)", task.pomodoros, task.estimate),
-                    "",
-                    move |this| this.act(Command::SetTask(Some((id, title.clone())))),
-                )
-            })
-            .collect();
-        if tasks.is_empty() {
-            tasks.push(StandardItem { label: "No open tasks".into(), enabled: false, ..Default::default() }.into());
-        }
-        if t.task_id.is_some() {
-            tasks.push(MenuItem::Separator);
-            tasks.push(item("Stop focusing on task", "window-close-symbolic", |this| {
-                this.act(Command::SetTask(None))
-            }));
-        }
-        tasks.push(MenuItem::Separator);
-        tasks.push(item("Manage tasks…", "checkbox-checked-symbolic", |_| open_window(Some("--tasks"))));
-
-        let mut menu = vec![StandardItem { label: header, enabled: false, ..Default::default() }.into()];
-        if let Some(_) = t.task_id.filter(|_| !t.label.is_empty()) {
-            menu.push(StandardItem { label: format!("🎯 {}", t.label), enabled: false, ..Default::default() }.into());
-        }
-        menu.extend([
+        vec![
+            StandardItem { label: header, enabled: false, ..Default::default() }.into(),
             MenuItem::Separator,
             item(play_label, play_icon, |this| this.act(Command::Toggle)),
             item("Skip to next phase", "media-skip-forward-symbolic", |this| this.act(Command::Skip)),
             item("Restart this phase", "edit-undo-symbolic", |this| this.act(Command::Reset)),
             item("Reset pomodoro", "view-refresh-symbolic", |this| this.act(Command::ResetCycle)),
-            MenuItem::Separator,
-            SubMenu { label: "Focus on task".into(), icon_name: "task-due-symbolic".into(), submenu: tasks, ..Default::default() }
-                .into(),
             MenuItem::Separator,
             item("Open Cosmic Doro", "accessories-clock-symbolic", |_| open_window(None)),
             item("Reports", "utilities-system-monitor-symbolic", |_| open_window(Some("--reports"))),
@@ -215,8 +178,7 @@ impl ksni::Tray for DoroTray {
                 s.save();
                 this.quit = true;
             }),
-        ]);
-        menu
+        ]
     }
 }
 
@@ -236,7 +198,6 @@ fn main() {
         timer: TimerState::default(),
         settings: Settings::default(),
         now: 0,
-        tasks: Vec::new(),
         quit: false,
     };
     tray.refresh();
