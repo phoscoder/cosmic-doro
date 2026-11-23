@@ -167,22 +167,20 @@ pub fn apply(cmd: Command) -> TimerState {
     let settings = Settings::load();
     let mut state = TimerState::load();
     let now = now_ms();
+    let mut event = None;
     match cmd {
         Command::Toggle => match state.status {
             Status::Idle => {
                 state.start(&settings, now);
-                if settings.notification_sound {
-                    crate::notify::play_start_sound();
-                }
+                event = Some(crate::notify::TimerEvent::Started);
             }
             Status::Running { ends_at } => {
-                state.status = Status::Paused { remaining_ms: (ends_at - now).max(0) }
+                state.status = Status::Paused { remaining_ms: (ends_at - now).max(0) };
+                event = Some(crate::notify::TimerEvent::Paused);
             }
             Status::Paused { remaining_ms } => {
                 state.status = Status::Running { ends_at: now + remaining_ms };
-                if settings.notification_sound {
-                    crate::notify::play_start_sound();
-                }
+                event = Some(crate::notify::TimerEvent::Resumed);
             }
         },
         Command::Reset => {
@@ -202,6 +200,9 @@ pub fn apply(cmd: Command) -> TimerState {
         }
     }
     state.save();
+    if let Some(event) = event {
+        crate::notify::timer_event(event, &state, &settings);
+    }
     state
 }
 

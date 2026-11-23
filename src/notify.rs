@@ -2,7 +2,8 @@
 //! notification daemon (cosmic-notifications) implements.
 
 use crate::config::Settings;
-use crate::engine::{self, Completion, Phase};
+use crate::engine::{self, Completion, Phase, TimerState};
+use std::sync::atomic::{AtomicU32, Ordering};
 use notify_rust::{Hint, Notification, Timeout, Urgency};
 
 pub fn phase_complete(c: &Completion, settings: &Settings) {
@@ -88,12 +89,106 @@ pub fn play_sound(phase_finished: Phase) -> bool {
     play_first(&sound_candidates(phase_finished))
 }
 
-/// Short cue played when the timer starts or resumes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TimerEvent {
+    Started,
+    Paused,
+    Resumed,
+}
+
+/// Id of the last start/pause/resume notification, so each one replaces the
+/// previous instead of stacking up.
+static LAST_EVENT_ID: AtomicU32 = AtomicU32::new(0);
+
+/// Tone + short notification for a start, pause or resume click.
+pub fn timer_event(event: TimerEvent, state: &TimerState, settings: &Settings) {
+    if settings.notification_sound {
+        match event {
+            TimerEvent::Paused => play_pause_sound(),
+            _ => play_start_sound(),
+        };
+    }
+    if !settings.notifications {
+        return;
+    }
+
+    let now = engine::now_ms();
+    let left = crate::format_clock(state.remaining_ms(settings, now));
+    let ends_at = chrono::DateTime::from_timestamp_millis(now + state.remaining_ms(settings, now))
+        .map(|t| t.with_timezone(&chrono::Local).format("%H:%M").to_string())
+        .unwrap_or_default();
+    let phase = state.phase.title();
+    let round = match state.phase {
+        Phase::Focus => format!(" · round {} of {}", state.round, settings.rounds.max(1)),
+        _ => String::new(),
+    };
+    let (summary, body, action) = match event {
+        TimerEvent::Started => (
+            format!("▶ {phase} started"),
+            format!("{left}{round} · ends at {ends_at}"),
+            Some(("pause", "Pause")),
+        ),
+        TimerEvent::Resumed => (
+            format!("▶ {phase} resumed"),
+            format!("{left} left{round} · ends at {ends_at}"),
+            Some(("pause", "Pause")),
+        ),
+        TimerEvent::Paused => (
+            format!("⏸ {phase} paused"),
+            format!("{left} left{round}"),
+            Some(("resume", "Resume")),
+        ),
+    };
+
+    std::thread::spawn(move || {
+        let mut n = Notification::new();
+        n.appname(crate::APP_NAME)
+            .summary(&summary)
+            .body(&body)
+            .icon(crate::APP_ID)
+            .hint(Hint::DesktopEntry(crate::APP_ID.to_string()))
+            .hint(Hint::Transient(true))
+            .hint(Hint::SuppressSound(true))
+            .urgency(Urgency::Low)
+            .timeout(Timeout::Milliseconds(4_000));
+        let last = LAST_EVENT_ID.load(Ordering::Relaxed);
+        if last != 0 {
+            n.id(last);
+        }
+        if let Some((key, label)) = action {
+            n.action(key, label);
+        }
+        let Ok(handle) = n.show() else { return };
+        LAST_EVENT_ID.store(handle.id(), Ordering::Relaxed);
+        handle.wait_for_action(|a| {
+            let st = TimerState::load();
+            let wants = match a {
+                "pause" => st.is_running(),
+                "resume" => matches!(st.status, engine::Status::Paused { .. }),
+                _ => false,
+            };
+            if wants {
+                engine::apply(engine::Command::Toggle);
+            }
+        });
+    });
+}
+
+/// Short rising cue played when the timer starts or resumes.
 pub fn play_start_sound() -> bool {
     play_first(&[
         "/usr/share/sounds/COSMIC/stereo/action/count-down.oga",
         "/usr/share/sounds/freedesktop/stereo/message.oga",
         "/usr/share/sounds/COSMIC/stereo/notification/message.oga",
+    ])
+}
+
+/// A different, softer tone for pausing so the two are easy to tell apart.
+pub fn play_pause_sound() -> bool {
+    play_first(&[
+        "/usr/share/sounds/COSMIC/stereo/action/camera-focus.oga",
+        "/usr/share/sounds/COSMIC/stereo/action/audio-volume-change.oga",
+        "/usr/share/sounds/freedesktop/stereo/audio-volume-change.oga",
     ])
 }
 
