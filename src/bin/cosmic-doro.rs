@@ -711,7 +711,7 @@ impl App {
                 )
                 .add(
                     settings::item::builder("Sound")
-                        .description("Play a chime when a focus session or break ends")
+                        .description("A short cue when the timer starts, and a chime when a session or break ends")
                         .toggler(s.notification_sound, |v| Message::Set(Field::Sound(v))),
                 )
                 .add(settings::item(

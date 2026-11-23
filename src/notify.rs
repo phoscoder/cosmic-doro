@@ -85,10 +85,20 @@ fn sound_candidates(phase_finished: Phase) -> [&'static str; 4] {
 /// Plays the end-of-phase chime through PipeWire/PulseAudio without blocking.
 /// Returns false if no sound file or player could be found.
 pub fn play_sound(phase_finished: Phase) -> bool {
-    let Some(file) = sound_candidates(phase_finished)
-        .into_iter()
-        .find(|f| std::path::Path::new(f).exists())
-    else {
+    play_first(&sound_candidates(phase_finished))
+}
+
+/// Short cue played when the timer starts or resumes.
+pub fn play_start_sound() -> bool {
+    play_first(&[
+        "/usr/share/sounds/COSMIC/stereo/action/count-down.oga",
+        "/usr/share/sounds/freedesktop/stereo/message.oga",
+        "/usr/share/sounds/COSMIC/stereo/notification/message.oga",
+    ])
+}
+
+fn play_first(candidates: &[&str]) -> bool {
+    let Some(file) = candidates.iter().copied().find(|f| std::path::Path::new(f).exists()) else {
         return false;
     };
     let players: [(&str, &[&str]); 3] = [("pw-play", &[]), ("paplay", &[]), ("canberra-gtk-play", &["-f"])];

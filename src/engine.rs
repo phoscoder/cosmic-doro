@@ -169,12 +169,20 @@ pub fn apply(cmd: Command) -> TimerState {
     let now = now_ms();
     match cmd {
         Command::Toggle => match state.status {
-            Status::Idle => state.start(&settings, now),
+            Status::Idle => {
+                state.start(&settings, now);
+                if settings.notification_sound {
+                    crate::notify::play_start_sound();
+                }
+            }
             Status::Running { ends_at } => {
                 state.status = Status::Paused { remaining_ms: (ends_at - now).max(0) }
             }
             Status::Paused { remaining_ms } => {
-                state.status = Status::Running { ends_at: now + remaining_ms }
+                state.status = Status::Running { ends_at: now + remaining_ms };
+                if settings.notification_sound {
+                    crate::notify::play_start_sound();
+                }
             }
         },
         Command::Reset => {
@@ -289,7 +297,13 @@ mod tests {
             std::env::set_var("XDG_DATA_HOME", dir.join("data"));
             std::env::set_var("XDG_CONFIG_HOME", dir.join("config"));
         }
-        let s = Settings { rounds: 2, auto_start_breaks: false, notifications: false, ..Settings::default() };
+        let s = Settings {
+            rounds: 2,
+            auto_start_breaks: false,
+            notifications: false,
+            notification_sound: false,
+            ..Settings::default()
+        };
         s.save();
 
         let expire = || {
