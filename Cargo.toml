@@ -1,0 +1,27 @@
+[package]
+name = "cosmic-doro"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "A cosmic pomodoro focus timer for the COSMIC desktop"
+repository = "https://github.com/phoscoder/cosmic-doro"
+
+[lib]
+name = "doro"
+path = "src/lib.rs"
+
+[dependencies]
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+notify-rust = { version = "4", default-features = false, features = ["z"] }
+
+[dependencies.libcosmic]
+git = "https://github.com/pop-os/libcosmic"
+rev = "12ae9ef3a8b9e36e6fb8459444341b680c2ccc7a"
+default-features = false
+features = ["applet", "tokio", "winit", "wayland", "multi-window", "a11y", "dbus-config", "x11"]
+
+[profile.release]
+opt-level = 3
+lto = "thin"
