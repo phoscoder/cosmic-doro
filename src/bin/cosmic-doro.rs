@@ -47,6 +47,8 @@ enum Field {
     Notifications(bool),
     Sound(bool),
     PanelTime(bool),
+    Tray(bool),
+    TrayAutostart(bool),
 }
 
 #[derive(Clone, Debug)]
@@ -180,6 +182,9 @@ impl Application for App {
         };
         app.refresh_report();
         app.reload_todos();
+        if app.settings.tray_icon {
+            Settings::spawn_tray();
+        }
         let t = app.sync_title();
         (app, t)
     }
@@ -306,8 +311,13 @@ impl Application for App {
                     Field::Notifications(v) => s.notifications = v,
                     Field::Sound(v) => s.notification_sound = v,
                     Field::PanelTime(v) => s.applet_show_time = v,
+                    Field::Tray(v) => s.tray_icon = v,
+                    Field::TrayAutostart(v) => Settings::set_tray_autostart(v),
                 }
                 s.save();
+                if s.tray_icon {
+                    Settings::spawn_tray();
+                }
                 self.settings_mtime = doro::paths::mtime(&Settings::path());
                 self.report.goal = self.settings.daily_goal;
             }
@@ -1066,6 +1076,19 @@ impl App {
                     settings::item::builder("Show remaining time in panel")
                         .description("Otherwise only the progress ring is shown")
                         .toggler(s.applet_show_time, |v| Message::Set(Field::PanelTime(v))),
+                )
+                .into(),
+            settings::section()
+                .title("Tray icon")
+                .add(
+                    settings::item::builder("Show tray icon")
+                        .description("Live progress ring in the status area; keeps the timer running after you close this window")
+                        .toggler(s.tray_icon, |v| Message::Set(Field::Tray(v))),
+                )
+                .add(
+                    settings::item::builder("Start tray at login")
+                        .description("Have Cosmic Doro ready in the tray every time you log in")
+                        .toggler(Settings::tray_autostart(), |v| Message::Set(Field::TrayAutostart(v))),
                 )
                 .into(),
             settings::section()

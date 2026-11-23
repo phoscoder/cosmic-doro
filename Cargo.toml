@@ -19,11 +19,16 @@ path = "src/bin/cosmic-doro.rs"
 name = "cosmic-doro-applet"
 path = "src/bin/cosmic-doro-applet.rs"
 
+[[bin]]
+name = "cosmic-doro-tray"
+path = "src/bin/cosmic-doro-tray.rs"
+
 [dependencies]
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 notify-rust = { version = "4", default-features = false, features = ["z"] }
+ksni = { version = "0.3.7", features = ["blocking"] }
 
 [dependencies.libcosmic]
 git = "https://github.com/pop-os/libcosmic"
