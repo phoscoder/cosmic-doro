@@ -277,7 +277,7 @@ pub fn tick() -> (TimerState, Option<Completion>) {
 
     let completion = Completion { finished, next: state.phase, auto_started: auto, state: state.clone() };
     if settings.notification_sound {
-        crate::notify::play_sound(finished);
+        crate::notify::play(crate::notify::Tone::for_finished(finished));
     }
     if settings.notifications {
         crate::notify::phase_complete(&completion, &settings);

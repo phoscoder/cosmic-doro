@@ -65,6 +65,7 @@ enum Field {
     AutoFocus(bool),
     Notifications(bool),
     Sound(bool),
+    Volume(u32),
     PanelTime(bool),
     Tray(bool),
     TrayAutostart(bool),
@@ -75,7 +76,7 @@ enum Message {
     Tick,
     Timer(Command),
     Set(Field),
-    TestSound,
+    TestSound(doro::notify::Tone),
     ClearHistory,
     ConfirmClear(bool),
 }
@@ -235,6 +236,7 @@ impl Application for App {
                     Field::AutoFocus(v) => s.auto_start_focus = v,
                     Field::Notifications(v) => s.notifications = v,
                     Field::Sound(v) => s.notification_sound = v,
+                    Field::Volume(v) => s.sound_volume = v,
                     Field::PanelTime(v) => s.applet_show_time = v,
                     Field::Tray(v) => s.tray_icon = v,
                     Field::TrayAutostart(v) => Settings::set_tray_autostart(v),
@@ -246,8 +248,8 @@ impl Application for App {
                 self.settings_mtime = doro::paths::mtime(&Settings::path());
                 self.report.goal = self.settings.daily_goal;
             }
-            Message::TestSound => {
-                doro::notify::play_sound(Phase::Focus);
+            Message::TestSound(tone) => {
+                doro::notify::play(tone);
             }
             Message::ClearHistory => self.confirm_clear = true,
             Message::ConfirmClear(yes) => {
@@ -715,10 +717,27 @@ impl App {
                         .toggler(s.notification_sound, |v| Message::Set(Field::Sound(v))),
                 )
                 .add(settings::item(
-                    "Test the sound",
-                    widget::button::standard("Play")
-                        .leading_icon(icon::from_name("audio-volume-high-symbolic"))
-                        .on_press(Message::TestSound),
+                    "Sound volume",
+                    widget::Row::new()
+                        .spacing(12)
+                        .align_y(Alignment::Center)
+                        .push(
+                            widget::slider(0..=100, s.sound_volume.min(100) as u8, |v| {
+                                Message::Set(Field::Volume(u32::from(v)))
+                            })
+                            .on_release(Message::TestSound(doro::notify::Tone::FocusEnd))
+                            .width(Length::Fixed(180.0)),
+                        )
+                        .push(widget::text::body(format!("{}%", s.sound_volume.min(100))).width(Length::Fixed(44.0))),
+                ))
+                .add(settings::item(
+                    "Preview tones",
+                    widget::Row::new()
+                        .spacing(8)
+                        .push(widget::button::standard("Start").on_press(Message::TestSound(doro::notify::Tone::Start)))
+                        .push(widget::button::standard("Pause").on_press(Message::TestSound(doro::notify::Tone::Pause)))
+                        .push(widget::button::standard("Focus end").on_press(Message::TestSound(doro::notify::Tone::FocusEnd)))
+                        .push(widget::button::standard("Break end").on_press(Message::TestSound(doro::notify::Tone::BreakEnd))),
                 ))
                 .into(),
             settings::section()

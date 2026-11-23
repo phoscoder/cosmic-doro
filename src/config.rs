@@ -14,6 +14,8 @@ pub struct Settings {
     pub auto_start_focus: bool,
     pub notifications: bool,
     pub notification_sound: bool,
+    /// Tone volume in percent (0–100).
+    pub sound_volume: u32,
     pub applet_show_time: bool,
     pub tray_icon: bool,
 }
@@ -30,6 +32,7 @@ impl Default for Settings {
             auto_start_focus: false,
             notifications: true,
             notification_sound: true,
+            sound_volume: 100,
             applet_show_time: true,
             tray_icon: true,
         }

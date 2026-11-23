@@ -47,7 +47,7 @@ pub fn phase_complete(c: &Completion, settings: &Settings) {
             .hint(Hint::Category("im.received".to_string()))
             .urgency(Urgency::Normal)
             .timeout(Timeout::Milliseconds(10_000));
-        // We play the chime ourselves (see `play_sound`), so keep the daemon quiet.
+        // We play the chime ourselves (see `play`), so keep the daemon quiet.
         n.hint(Hint::SuppressSound(true));
         if !auto {
             n.action("start", action);
@@ -61,32 +61,6 @@ pub fn phase_complete(c: &Completion, settings: &Settings) {
             });
         }
     });
-}
-
-/// Sound theme files to try, in order: COSMIC's theme first, then freedesktop's.
-fn sound_candidates(phase_finished: Phase) -> [&'static str; 4] {
-    match phase_finished {
-        // Focus done: a bright "complete" chime.
-        Phase::Focus => [
-            "/usr/share/sounds/COSMIC/stereo/notification/complete.oga",
-            "/usr/share/sounds/freedesktop/stereo/complete.oga",
-            "/usr/share/sounds/COSMIC/stereo/action/bell.oga",
-            "/usr/share/sounds/freedesktop/stereo/bell.oga",
-        ],
-        // Break over: a bell to call you back.
-        _ => [
-            "/usr/share/sounds/COSMIC/stereo/action/bell.oga",
-            "/usr/share/sounds/freedesktop/stereo/bell.oga",
-            "/usr/share/sounds/COSMIC/stereo/notification/complete.oga",
-            "/usr/share/sounds/freedesktop/stereo/complete.oga",
-        ],
-    }
-}
-
-/// Plays the end-of-phase chime through PipeWire/PulseAudio without blocking.
-/// Returns false if no sound file or player could be found.
-pub fn play_sound(phase_finished: Phase) -> bool {
-    play_first(&sound_candidates(phase_finished))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -103,10 +77,10 @@ static LAST_EVENT_ID: AtomicU32 = AtomicU32::new(0);
 /// Tone + short notification for a start, pause or resume click.
 pub fn timer_event(event: TimerEvent, state: &TimerState, settings: &Settings) {
     if settings.notification_sound {
-        match event {
-            TimerEvent::Paused => play_pause_sound(),
-            _ => play_start_sound(),
-        };
+        play(match event {
+            TimerEvent::Paused => Tone::Pause,
+            _ => Tone::Start,
+        });
     }
     if !settings.notifications {
         return;
@@ -174,33 +148,61 @@ pub fn timer_event(event: TimerEvent, state: &TimerState, settings: &Settings) {
     });
 }
 
-/// Short rising cue played when the timer starts or resumes.
-pub fn play_start_sound() -> bool {
-    play_first(&[
-        "/usr/share/sounds/COSMIC/stereo/action/count-down.oga",
-        "/usr/share/sounds/freedesktop/stereo/message.oga",
-        "/usr/share/sounds/COSMIC/stereo/notification/message.oga",
-    ])
+/// Cosmic Doro's own tones, bundled in the binary (see `res/sounds/generate.sh`).
+/// They're mastered much louder than the desktop's subtle UI sounds.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Tone {
+    Start,
+    Pause,
+    FocusEnd,
+    BreakEnd,
 }
 
-/// A different, softer tone for pausing so the two are easy to tell apart.
-pub fn play_pause_sound() -> bool {
-    play_first(&[
-        "/usr/share/sounds/COSMIC/stereo/action/camera-focus.oga",
-        "/usr/share/sounds/COSMIC/stereo/action/audio-volume-change.oga",
-        "/usr/share/sounds/freedesktop/stereo/audio-volume-change.oga",
-    ])
+impl Tone {
+    pub fn for_finished(phase: Phase) -> Self {
+        if phase == Phase::Focus { Tone::FocusEnd } else { Tone::BreakEnd }
+    }
+
+    fn file(self) -> (&'static str, &'static [u8]) {
+        match self {
+            Tone::Start => ("start.oga", include_bytes!("../res/sounds/start.oga")),
+            Tone::Pause => ("pause.oga", include_bytes!("../res/sounds/pause.oga")),
+            Tone::FocusEnd => ("focus-end.oga", include_bytes!("../res/sounds/focus-end.oga")),
+            Tone::BreakEnd => ("break-end.oga", include_bytes!("../res/sounds/break-end.oga")),
+        }
+    }
+
+    /// Writes the tone to the cache dir (once) so external players can read it.
+    fn path(self) -> Option<std::path::PathBuf> {
+        let (name, bytes) = self.file();
+        let dir = std::env::var_os("XDG_CACHE_HOME")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".cache"))
+            .join("cosmic-doro")
+            .join(format!("sounds-{}", env!("CARGO_PKG_VERSION")));
+        let path = dir.join(name);
+        let fresh = std::fs::metadata(&path).is_ok_and(|m| m.len() == bytes.len() as u64);
+        if !fresh {
+            crate::paths::write_atomic(&path, bytes).ok()?;
+        }
+        Some(path)
+    }
 }
 
-fn play_first(candidates: &[&str]) -> bool {
-    let Some(file) = candidates.iter().copied().find(|f| std::path::Path::new(f).exists()) else {
-        return false;
-    };
-    let players: [(&str, &[&str]); 3] = [("pw-play", &[]), ("paplay", &[]), ("canberra-gtk-play", &["-f"])];
+/// Plays a tone at the configured volume through PipeWire/PulseAudio without
+/// blocking. Returns false if no player could be started.
+pub fn play(tone: Tone) -> bool {
+    let Some(path) = tone.path() else { return false };
+    let volume = Settings::load().sound_volume.min(100) as f32 / 100.0;
+    let players: [(&str, Vec<String>); 3] = [
+        ("pw-play", vec![format!("--volume={volume:.2}")]),
+        ("paplay", vec![format!("--volume={}", (volume * 65536.0) as u32)]),
+        ("canberra-gtk-play", vec!["-f".into()]),
+    ];
     for (bin, args) in players {
         if let Ok(mut child) = std::process::Command::new(bin)
-            .args(args)
-            .arg(file)
+            .args(&args)
+            .arg(&path)
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .spawn()
