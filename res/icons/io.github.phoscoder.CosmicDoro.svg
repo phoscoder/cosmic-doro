@@ -15,14 +15,6 @@
       <stop offset="0.5" stop-color="#b892ff"/>
       <stop offset="1" stop-color="#ff7eb6"/>
     </linearGradient>
-    <linearGradient id="leaf" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#7ef0a0"/>
-      <stop offset="1" stop-color="#2fa860"/>
-    </linearGradient>
-    <linearGradient id="metal" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#f4f1ff"/>
-      <stop offset="1" stop-color="#b9b3d6"/>
-    </linearGradient>
     <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
       <feGaussianBlur stdDeviation="10"/>
     </filter>
@@ -51,21 +43,9 @@
     <ellipse cx="256" cy="284" rx="214" ry="56" fill="none" stroke="url(#orbit)" stroke-width="14" opacity=".55"/>
   </g>
 
-  <!-- stopwatch crown + side button -->
-  <rect x="232" y="96" width="48" height="26" rx="8" fill="url(#metal)"/>
-  <rect x="246" y="116" width="20" height="22" rx="4" fill="#cfc9ea"/>
-  <rect x="346" y="140" width="34" height="18" rx="7" fill="url(#metal)" transform="rotate(40 363 149)"/>
-
   <!-- glow + tomato planet -->
   <circle cx="256" cy="284" r="138" fill="#ff5a4e" opacity=".45" filter="url(#glow)"/>
   <circle cx="256" cy="284" r="132" fill="url(#tomato)"/>
-
-  <!-- pomodoro leaves -->
-  <g fill="url(#leaf)">
-    <path d="M256 162 C236 140 206 140 190 152 C212 156 230 166 248 176 Z"/>
-    <path d="M256 162 C276 140 306 140 322 152 C300 156 282 166 264 176 Z"/>
-    <path d="M256 160 C246 176 232 188 214 192 C236 196 250 188 256 178 C262 188 276 196 298 192 C280 188 266 176 256 160 Z"/>
-  </g>
 
   <!-- dial: remaining-time arc + ticks + hand -->
   <circle cx="256" cy="290" r="92" fill="none" stroke="#ffffff" stroke-opacity=".18" stroke-width="16"/>
