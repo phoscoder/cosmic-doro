@@ -18,13 +18,35 @@ fn main() -> cosmic::iced::Result {
     let settings = AppSettings::default()
         .size(Size::new(1040.0, 780.0))
         .size_limits(cosmic::iced::Limits::NONE.min_width(420.0).min_height(560.0));
-    let page = match std::env::args().nth(1).as_deref() {
-        Some("--tasks") => 1,
-        Some("--reports") => 2,
-        Some("--settings") => 3,
-        _ => 0,
-    };
-    cosmic::app::run::<App>(settings, page)
+    let page = std::env::args().nth(1).and_then(|a| a.strip_prefix("--").map(str::to_string));
+    // If Cosmic Doro is already running, this hands the request to that
+    // instance over D-Bus (raising its window) and exits instead.
+    cosmic::app::run_single_instance::<App>(settings, Flags { page })
+}
+
+/// Launch flags: an optional page name (`timer`, `tasks`, `reports`, `settings`).
+#[derive(Clone, Debug, Default)]
+struct Flags {
+    page: Option<String>,
+}
+
+impl cosmic::app::CosmicFlags for Flags {
+    type SubCommand = String;
+    type Args = Vec<String>;
+
+    fn action(&self) -> Option<&String> {
+        self.page.as_ref()
+    }
+}
+
+fn page_index(name: &str) -> Option<u16> {
+    match name {
+        "timer" => Some(0),
+        "tasks" => Some(1),
+        "reports" => Some(2),
+        "settings" => Some(3),
+        _ => None,
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -130,7 +152,7 @@ impl App {
 
 impl Application for App {
     type Executor = executor::Default;
-    type Flags = u16;
+    type Flags = Flags;
     type Message = Message;
     const APP_ID: &'static str = doro::APP_ID;
 
@@ -141,7 +163,7 @@ impl Application for App {
         &mut self.core
     }
 
-    fn init(core: Core, page: u16) -> (Self, Task<Message>) {
+    fn init(core: Core, flags: Flags) -> (Self, Task<Message>) {
         let mut nav = nav_bar::Model::default();
         nav.insert().text("Timer").icon(icon::from_name("accessories-clock-symbolic")).data(Page::Timer);
         nav.insert().text("Tasks").icon(icon::from_name("checkbox-checked-symbolic")).data(Page::Tasks);
@@ -153,7 +175,7 @@ impl Application for App {
             .text("Settings")
             .icon(icon::from_name("preferences-system-symbolic"))
             .data(Page::Settings);
-        nav.activate_position(page);
+        nav.activate_position(flags.page.as_deref().and_then(page_index).unwrap_or(0));
 
         let mut filter = segmented_button::SingleSelectModel::default();
         filter.insert().text("Active").data(Filter::Active);
@@ -191,6 +213,22 @@ impl Application for App {
 
     fn nav_model(&self) -> Option<&nav_bar::Model> {
         Some(&self.nav)
+    }
+
+    /// Another launch (tray, applet, app library) asked us to show up.
+    fn dbus_activation(&mut self, msg: cosmic::dbus_activation::Message) -> Task<Message> {
+        if let cosmic::dbus_activation::Details::ActivateAction { action, .. } = &msg.msg {
+            if let Some(n) = page_index(action) {
+                self.nav.activate_position(n);
+                if self.page() == Page::Reports {
+                    self.refresh_report();
+                }
+            }
+        }
+        match msg.activation_token {
+            Some(token) => cosmic::task::message(cosmic::Action::Cosmic(cosmic::app::Action::Activate(token))),
+            None => Task::none(),
+        }
     }
 
     fn on_window_resize(&mut self, id: cosmic::iced::window::Id, width: f32, _height: f32) {

@@ -202,7 +202,9 @@ impl cosmic::Application for Applet {
                     .and_then(|p| p.parent().map(|d| d.join("cosmic-doro")))
                     .filter(|p| p.exists())
                     .unwrap_or_else(|| "cosmic-doro".into());
-                let _ = std::process::Command::new(exe).arg("--reports").spawn();
+                if let Ok(mut child) = std::process::Command::new(exe).arg("--reports").spawn() {
+                    std::thread::spawn(move || child.wait());
+                }
                 if let Some(id) = self.popup.take() {
                     return cosmic::task::message(cosmic::Action::Surface(destroy_popup(id)));
                 }

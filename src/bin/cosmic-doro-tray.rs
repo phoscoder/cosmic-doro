@@ -28,7 +28,13 @@ fn open_window(page: Option<&str>) {
     if let Some(p) = page {
         cmd.arg(p);
     }
-    let _ = cmd.spawn();
+    // Lets the running instance raise its window on Wayland.
+    if let Some(token) = ksni::current_xdg_activation_token() {
+        cmd.env("XDG_ACTIVATION_TOKEN", token);
+    }
+    if let Ok(mut child) = cmd.spawn() {
+        std::thread::spawn(move || child.wait());
+    }
 }
 
 fn rgb(phase: Phase) -> [u8; 3] {

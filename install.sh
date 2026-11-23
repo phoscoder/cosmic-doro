@@ -12,7 +12,7 @@ ICONS="$PREFIX/share/icons/hicolor"
 ID=io.github.phoscoder.CosmicDoro
 
 if [[ "${1:-}" == "uninstall" ]]; then
-  pkill -x cosmic-doro-tray 2>/dev/null || true
+  pkill -f "$BIN/cosmic-doro-tray" 2>/dev/null || true
   rm -f "$BIN/cosmic-doro" "$BIN/cosmic-doro-applet" "$BIN/cosmic-doro-tray" \
         "${XDG_CONFIG_HOME:-$HOME/.config}/autostart/$ID.Tray.desktop" \
         "$APPS/$ID.desktop" "$APPS/$ID.Applet.desktop" \
@@ -32,7 +32,7 @@ mkdir -p "$APPS"
 sed "s|^Exec=cosmic-doro$|Exec=$BIN/cosmic-doro|" res/desktop/$ID.desktop > "$APPS/$ID.desktop"
 sed "s|^Exec=cosmic-doro-applet$|Exec=$BIN/cosmic-doro-applet|" res/desktop/$ID.Applet.desktop > "$APPS/$ID.Applet.desktop"
 # Restart the tray so the new binary takes over (the app relaunches it).
-pkill -x cosmic-doro-tray 2>/dev/null || true
+pkill -f "$BIN/cosmic-doro-tray" 2>/dev/null || true
 command -v gtk-update-icon-cache >/dev/null && gtk-update-icon-cache -qtf "$ICONS" || true
 command -v update-desktop-database >/dev/null && update-desktop-database -q "$APPS" || true
 

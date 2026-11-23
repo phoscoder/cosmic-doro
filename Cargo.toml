@@ -34,7 +34,7 @@ ksni = { version = "0.3.7", features = ["blocking"] }
 git = "https://github.com/pop-os/libcosmic"
 rev = "12ae9ef3a8b9e36e6fb8459444341b680c2ccc7a"
 default-features = false
-features = ["applet", "tokio", "winit", "wayland", "multi-window", "a11y", "dbus-config", "x11"]
+features = ["applet", "single-instance", "tokio", "winit", "wayland", "multi-window", "a11y", "dbus-config", "x11"]
 
 [profile.release]
 opt-level = 3
