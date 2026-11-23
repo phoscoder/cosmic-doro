@@ -4,6 +4,9 @@
 //! one can drive the timer on its own.
 
 pub mod config;
+pub mod engine;
+pub mod history;
+pub mod notify;
 pub mod paths;
 
 pub const APP_ID: &str = "io.github.phoscoder.CosmicDoro";
