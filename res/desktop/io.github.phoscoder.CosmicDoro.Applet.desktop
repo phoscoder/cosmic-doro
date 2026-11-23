@@ -1,0 +1,15 @@
+[Desktop Entry]
+Name=Cosmic Doro
+Comment=Pomodoro timer in your panel
+Type=Application
+Exec=cosmic-doro-applet
+Icon=io.github.phoscoder.CosmicDoro-symbolic
+Terminal=false
+Categories=COSMIC;
+Keywords=COSMIC;Iced;pomodoro;timer;
+NoDisplay=true
+StartupNotify=true
+X-CosmicApplet=true
+X-CosmicHoverPopup=Auto
+X-OverflowPriority=10
+X-OverflowMinSize=6

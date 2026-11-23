@@ -1,0 +1,12 @@
+[Desktop Entry]
+Name=Cosmic Doro
+GenericName=Pomodoro Timer
+Comment=A cosmic pomodoro focus timer with reports
+Type=Application
+Exec=cosmic-doro
+Icon=io.github.phoscoder.CosmicDoro
+Terminal=false
+Categories=COSMIC;Utility;Clock;
+Keywords=pomodoro;timer;focus;productivity;tomato;
+StartupNotify=true
+StartupWMClass=io.github.phoscoder.CosmicDoro

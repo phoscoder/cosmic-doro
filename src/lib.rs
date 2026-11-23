@@ -13,6 +13,10 @@ pub const APP_ID: &str = "io.github.phoscoder.CosmicDoro";
 pub const APPLET_ID: &str = "io.github.phoscoder.CosmicDoro.Applet";
 pub const APP_NAME: &str = "Cosmic Doro";
 
+pub const LOGO_SVG: &[u8] = include_bytes!("../res/icons/io.github.phoscoder.CosmicDoro.svg");
+pub const SYMBOLIC_SVG: &[u8] =
+    include_bytes!("../res/icons/io.github.phoscoder.CosmicDoro-symbolic.svg");
+
 /// Formats milliseconds as `MM:SS` (or `H:MM:SS` past an hour).
 pub fn format_clock(ms: i64) -> String {
     let total = (ms.max(0) + 999) / 1000;
