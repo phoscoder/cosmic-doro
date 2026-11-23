@@ -8,6 +8,7 @@ pub mod engine;
 pub mod history;
 pub mod notify;
 pub mod paths;
+pub mod todo;
 pub mod ui;
 
 pub const APP_ID: &str = "io.github.phoscoder.CosmicDoro";
