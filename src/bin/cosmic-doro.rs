@@ -75,6 +75,7 @@ enum Message {
     Tick,
     Timer(Command),
     Set(Field),
+    TestSound,
     ClearHistory,
     ConfirmClear(bool),
 }
@@ -244,6 +245,9 @@ impl Application for App {
                 }
                 self.settings_mtime = doro::paths::mtime(&Settings::path());
                 self.report.goal = self.settings.daily_goal;
+            }
+            Message::TestSound => {
+                doro::notify::play_sound(Phase::Focus);
             }
             Message::ClearHistory => self.confirm_clear = true,
             Message::ConfirmClear(yes) => {
@@ -706,9 +710,16 @@ impl App {
                         .toggler(s.notifications, |v| Message::Set(Field::Notifications(v))),
                 )
                 .add(
-                    settings::item::builder("Notification sound")
+                    settings::item::builder("Sound")
+                        .description("Play a chime when a focus session or break ends")
                         .toggler(s.notification_sound, |v| Message::Set(Field::Sound(v))),
                 )
+                .add(settings::item(
+                    "Test the sound",
+                    widget::button::standard("Play")
+                        .leading_icon(icon::from_name("audio-volume-high-symbolic"))
+                        .on_press(Message::TestSound),
+                ))
                 .into(),
             settings::section()
                 .title("Panel applet")

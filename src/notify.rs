@@ -35,7 +35,6 @@ pub fn phase_complete(c: &Completion, settings: &Settings) {
         ),
     };
 
-    let sound = settings.notification_sound;
     let auto = c.auto_started;
     std::thread::spawn(move || {
         let mut n = Notification::new();
@@ -47,9 +46,8 @@ pub fn phase_complete(c: &Completion, settings: &Settings) {
             .hint(Hint::Category("im.received".to_string()))
             .urgency(Urgency::Normal)
             .timeout(Timeout::Milliseconds(10_000));
-        if sound {
-            n.hint(Hint::SoundName("complete".to_string()));
-        }
+        // We play the chime ourselves (see `play_sound`), so keep the daemon quiet.
+        n.hint(Hint::SuppressSound(true));
         if !auto {
             n.action("start", action);
         }
@@ -62,4 +60,49 @@ pub fn phase_complete(c: &Completion, settings: &Settings) {
             });
         }
     });
+}
+
+/// Sound theme files to try, in order: COSMIC's theme first, then freedesktop's.
+fn sound_candidates(phase_finished: Phase) -> [&'static str; 4] {
+    match phase_finished {
+        // Focus done: a bright "complete" chime.
+        Phase::Focus => [
+            "/usr/share/sounds/COSMIC/stereo/notification/complete.oga",
+            "/usr/share/sounds/freedesktop/stereo/complete.oga",
+            "/usr/share/sounds/COSMIC/stereo/action/bell.oga",
+            "/usr/share/sounds/freedesktop/stereo/bell.oga",
+        ],
+        // Break over: a bell to call you back.
+        _ => [
+            "/usr/share/sounds/COSMIC/stereo/action/bell.oga",
+            "/usr/share/sounds/freedesktop/stereo/bell.oga",
+            "/usr/share/sounds/COSMIC/stereo/notification/complete.oga",
+            "/usr/share/sounds/freedesktop/stereo/complete.oga",
+        ],
+    }
+}
+
+/// Plays the end-of-phase chime through PipeWire/PulseAudio without blocking.
+/// Returns false if no sound file or player could be found.
+pub fn play_sound(phase_finished: Phase) -> bool {
+    let Some(file) = sound_candidates(phase_finished)
+        .into_iter()
+        .find(|f| std::path::Path::new(f).exists())
+    else {
+        return false;
+    };
+    let players: [(&str, &[&str]); 3] = [("pw-play", &[]), ("paplay", &[]), ("canberra-gtk-play", &["-f"])];
+    for (bin, args) in players {
+        if let Ok(mut child) = std::process::Command::new(bin)
+            .args(args)
+            .arg(file)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+        {
+            std::thread::spawn(move || child.wait());
+            return true;
+        }
+    }
+    false
 }
