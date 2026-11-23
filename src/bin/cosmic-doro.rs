@@ -433,7 +433,13 @@ impl App {
             .push(ring)
             .push(controls)
             .push(label_input)
-            .push(widget::button::link("Reset cycle to round 1").on_press(Message::Timer(Command::ResetCycle)))
+            .push(widget::tooltip(
+                widget::button::standard("Reset")
+                    .leading_icon(icon::from_name("view-refresh-symbolic"))
+                    .on_press(Message::Timer(Command::ResetCycle)),
+                widget::text("Stop the timer and go back to focus, round 1"),
+                widget::tooltip::Position::Bottom,
+            ))
             .push(today)
             .into()
     }

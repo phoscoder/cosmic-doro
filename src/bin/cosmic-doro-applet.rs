@@ -118,10 +118,20 @@ impl Applet {
                     ))),
             )
             .push(
-                widget::button::standard("Open reports")
-                    .leading_icon(icon::from_name("utilities-system-monitor-symbolic"))
-                    .width(Length::Fill)
-                    .on_press(Message::OpenApp),
+                widget::Row::new()
+                    .spacing(8)
+                    .push(
+                        widget::button::standard("Reset")
+                            .leading_icon(icon::from_name("view-refresh-symbolic"))
+                            .width(Length::Fill)
+                            .on_press(Message::Timer(Command::ResetCycle)),
+                    )
+                    .push(
+                        widget::button::standard("Open reports")
+                            .leading_icon(icon::from_name("utilities-system-monitor-symbolic"))
+                            .width(Length::Fill)
+                            .on_press(Message::OpenApp),
+                    ),
             );
 
         self.core.applet.popup_container(content).into()
