@@ -5,10 +5,15 @@ edition = "2024"
 license = "MIT"
 description = "A cosmic pomodoro focus timer for the COSMIC desktop"
 repository = "https://github.com/phoscoder/cosmic-doro"
+default-run = "cosmic-doro"
 
 [lib]
 name = "doro"
 path = "src/lib.rs"
+
+[[bin]]
+name = "cosmic-doro"
+path = "src/bin/cosmic-doro.rs"
 
 [dependencies]
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
